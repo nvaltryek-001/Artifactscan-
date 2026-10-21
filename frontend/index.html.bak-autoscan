@@ -1,0 +1,295 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f8fc">
+  <title>ArtifactScan AI | Heritage Workspace</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a class="brand" href="#">
+      <span class="brand-mark">♜</span>
+      <span><strong>ArtifactScan <i>AI</i></strong><small>Preserve · Digitize · Discover</small></span>
+    </a>
+
+    <div class="nav-label">WORKSPACE</div>
+    <nav id="mainNav">
+      <button class="nav-item active" data-page="Overview"><span>⌂</span>Overview</button>
+      <button class="nav-item" data-page="Artifact Collection"><span>▦</span>Artifact Collection</button>
+      <button class="nav-item" data-page="Capture Studio"><span>◎</span>Capture Studio</button>
+      <button class="nav-item" data-page="3D Reconstruction"><span>◇</span>3D Reconstruction</button>
+      <button class="nav-item" data-page="AI Classification"><span>✳</span>AI Classification</button>
+      <button class="nav-item" data-page="Research & Analytics"><span>▥</span>Research & Analytics</button>
+      <button class="nav-item" data-page="Reports & Export"><span>▤</span>Reports & Export</button>
+      <button class="nav-item" data-page="Settings"><span>⚙</span>Settings</button>
+    </nav>
+
+    <div class="sidebar-art">
+      <div class="temple-symbol">𓂀</div>
+      <p>Every artifact has a story.</p>
+      <small>Preserving our shared cultural heritage through digital technology.</small>
+    </div>
+    <div class="sidebar-bottom"><span class="online-dot"></span> Local research workspace</div>
+  </aside>
+
+  <main class="main-area">
+    <header class="topbar">
+      <button class="mobile-menu" id="mobileMenu" aria-label="Toggle navigation">☰</button>
+      <div class="search-box"><span>⌕</span><input id="globalSearch" placeholder="Search artifacts, categories, or IDs..." aria-label="Search artifacts"><kbd>Ctrl K</kbd></div>
+      <div class="top-actions">
+        <span class="api-pill"><span class="online-dot" id="apiDot"></span><span id="apiStatus">Checking API…</span></span>
+        <button class="icon-button" id="refreshButton" title="Refresh data">↻</button>
+      </div>
+    </header>
+
+    <section class="page-content">
+      <div class="welcome-row">
+        <section class="hero">
+          <div class="hero-copy">
+            <span class="eyebrow">DIGITAL HERITAGE LABORATORY</span>
+            <h1>Artifacts tell<br>our <span>story.</span></h1>
+            <p>Intelligent 3D artifact scanning, digital documentation, and AI-assisted categorization in one research workspace.</p>
+            <div class="hero-actions">
+              <button class="btn btn-gold" data-action="register">＋ Register artifact</button>
+              <button class="btn btn-outline" data-action="capture">◎ Capture studio</button>
+            </div>
+            <div class="hero-note"><span class="online-dot"></span> Your preservation workspace</div>
+          </div>
+          <div class="hero-art">
+            <img src="https://images.unsplash.com/photo-1564399579883-451a5d44ec08?auto=format&fit=crop&w=1000&q=85" alt="Historic stone architecture" onerror="this.style.display='none'">
+            <div class="hero-art-caption">FROM PHYSICAL OBJECTS<br>TO DIGITAL LEGACY</div>
+          </div>
+        </section>
+
+        <section class="panel readiness">
+          <div class="section-heading"><div><span class="eyebrow">INFRASTRUCTURE</span><h2>System readiness</h2></div><button class="text-button" data-page="Settings">Details ↗</button></div>
+          <div class="system-list">
+            <div class="system-card"><span class="system-icon green">▤</span><div><strong>API server</strong><small id="apiDetail">Checking connection…</small></div><span class="status-dot" id="apiStatusDot"></span></div>
+            <div class="system-card"><span class="system-icon blue">▤</span><div><strong>Database</strong><small id="dbDetail">Checking…</small></div><span class="status-dot" id="dbStatusDot"></span></div>
+            <div class="system-card"><span class="system-icon orange">◇</span><div><strong>COLMAP · 3D</strong><small id="colmapDetail">Checking…</small></div><span class="status-dot" id="colmapStatusDot"></span></div>
+            <div class="system-card"><span class="system-icon purple">✳</span><div><strong>AI classifier</strong><small id="classifierDetail">Integration pending</small></div><span class="status-dot" id="classifierStatusDot"></span></div>
+          </div>
+          <p class="panel-foot" id="readinessMessage">Checking real backend readiness.</p>
+        </section>
+      </div>
+
+      <section class="stats-grid">
+        <article class="stat-card"><span class="stat-icon blue">◇</span><div><small>Total artifacts</small><strong id="totalArtifacts">—</strong><p>Registered collection</p></div><span class="stat-decoration">01</span></article>
+        <article class="stat-card"><span class="stat-icon green">▧</span><div><small>Uploaded images</small><strong id="totalImages">—</strong><p>Artifact photographs</p></div><span class="stat-decoration">02</span></article>
+        <article class="stat-card"><span class="stat-icon orange">▱</span><div><small>Reconstruction jobs</small><strong id="totalJobs">—</strong><p>Submitted jobs</p></div><span class="stat-decoration">03</span></article>
+        <article class="stat-card"><span class="stat-icon purple">✳</span><div><small>AI classification</small><strong id="classifierCount">—</strong><p id="classifierSummary">Live predictions unavailable</p></div><span class="stat-decoration">04</span></article>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel collection-panel">
+          <div class="section-heading"><div><span class="eyebrow">YOUR DIGITAL ARCHIVE</span><h2>Artifact collection</h2></div><button class="text-button" data-page="Artifact Collection">View collection ↗</button></div>
+          <div class="filter-row"><span id="collectionCaption">Artifacts stored in your database</span><button class="btn btn-small btn-outline" data-action="register">＋ Add artifact</button></div>
+          <div id="artifactGrid" class="artifact-grid"><div class="empty-state">Loading artifacts from your API…</div></div>
+          <div id="collectionMessage" class="inline-message" aria-live="polite"></div>
+        </article>
+
+        <article class="panel distribution-panel">
+          <div class="section-heading"><div><span class="eyebrow">COLLECTION INSIGHTS</span><h2>Category distribution</h2></div></div>
+          <div id="categoryChart" class="category-chart"><div class="empty-state">Waiting for collection data…</div></div>
+          <p class="chart-note">Distribution is calculated from returned artifact records.</p>
+        </article>
+
+        <article class="panel quick-panel">
+          <div class="section-heading"><div><span class="eyebrow">SHORTCUTS</span><h2>Quick actions</h2></div></div>
+          <div class="quick-grid">
+            <button class="quick-action" data-action="register"><span class="quick-icon gold">＋</span><strong>Register artifact</strong><small>Create a record</small></button>
+            <button class="quick-action" data-action="upload"><span class="quick-icon blue">▧</span><strong>Upload photos</strong><small>Add artifact images</small></button>
+            <button class="quick-action" data-page="3D Reconstruction"><span class="quick-icon orange">◇</span><strong>Run 3D scan</strong><small>Start reconstruction</small></button>
+            <button class="quick-action" data-page="AI Classification"><span class="quick-icon purple">✳</span><strong>AI classification</strong><small>Check availability</small></button>
+          </div>
+        </article>
+      </section>
+
+      <section class="bottom-grid">
+        <article class="panel reconstruction-panel">
+          <div class="section-heading"><div><span class="eyebrow">PHOTOGRAMMETRY WORKSPACE</span><h2>3D reconstruction</h2></div><span class="soft-badge">COLMAP</span></div>
+          <div class="reconstruction-layout">
+            <div class="model-viewer">
+              <div class="viewer-top"><span>MODEL VIEWER</span><span id="viewerState">No model loaded</span></div>
+              <div class="model-placeholder"><div class="wire-cube">◇</div><strong>Your 3D model will appear here</strong><p>Upload overlapping photos and run reconstruction to begin.</p></div>
+              <div class="viewer-bottom"><span>Interactive viewer</span><span>Model preview unavailable until a real model is produced</span></div>
+            </div>
+            <div class="reconstruction-controls">
+              <label for="artifactSelect">Select artifact</label>
+              <select id="artifactSelect"><option value="">Choose an artifact…</option></select>
+              <label for="photoFiles">Artifact photographs</label>
+              <input id="photoFiles" type="file" accept="image/*" multiple>
+              <small class="helper">Use at least 3 overlapping views of the same object.</small>
+              <button class="btn btn-gold full-width" id="uploadButton">Upload photos</button>
+              <button class="btn btn-navy full-width" id="reconstructButton">Start reconstruction →</button>
+              <div id="jobMessage" class="job-message" aria-live="polite">Select an artifact to get started.</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel activity-panel">
+          <div class="section-heading"><div><span class="eyebrow">WORKSPACE STATUS</span><h2>Research notes</h2></div></div>
+          <div class="activity-item"><span class="activity-marker green">✓</span><div><strong>Collection connected</strong><p id="activityCollection">Artifact records will load from the backend.</p></div></div>
+          <div class="activity-item"><span class="activity-marker blue">↥</span><div><strong>Image capture</strong><p>Upload photos for an artifact from the reconstruction controls.</p></div></div>
+          <div class="activity-item"><span class="activity-marker orange">◇</span><div><strong>Reconstruction</strong><p>Jobs require an artifact with at least three uploaded images.</p></div></div>
+          <div class="activity-item"><span class="activity-marker purple">✳</span><div><strong>AI classification</strong><p id="activityClassifier">The prediction endpoint has not been verified as integrated.</p></div></div>
+          <div class="activity-footer"><span class="online-dot"></span> Status based on available backend responses</div>
+        </article>
+      </section>
+
+      <footer class="footer"><span>ArtifactScan AI</span><span>Digital preservation · Research workspace</span><span id="lastUpdated">Waiting for API data</span></footer>
+    </section>
+  
+<section class="dataset-panel" id="museumDatasetGallery">
+  <div class="dataset-heading">
+    <div>
+      <span class="eyebrow">REAL SOURCE DATA</span>
+      <h2>Museum Dataset Explorer</h2>
+      <p>Browse verified image files and metadata from the downloaded iMet subset.</p>
+    </div>
+    <a href="https://huggingface.co/datasets/timm/imet-open-access"
+       target="_blank" rel="noopener noreferrer">Dataset source ↗</a>
+  </div>
+
+  <div class="dataset-controls">
+    <label>Split
+      <select id="datasetSplit">
+        <option value="train">Training images</option>
+        <option value="validation">Validation images</option>
+      </select>
+    </label>
+    <label>Search title or label
+      <input id="datasetSearch" type="search" placeholder="Search real dataset records...">
+    </label>
+    <button id="datasetLoad" type="button">Load records</button>
+  </div>
+
+  <p id="datasetSummary" role="status">Loading dataset metadata...</p>
+  <div id="datasetCards" class="dataset-cards"></div>
+  <div class="dataset-pagination">
+    <button id="datasetPrevious" type="button" class="secondary">Previous</button>
+    <span id="datasetPage">Page 1</span>
+    <button id="datasetNext" type="button" class="secondary">Next</button>
+  </div>
+  <p class="dataset-disclaimer">
+    Dataset examples are separate from your registered artifacts.
+    Original object information belongs to the source collection.
+  </p>
+</section>
+
+<style>
+.dataset-panel{margin:28px 0;padding:24px;background:var(--panel,#fff);
+  border:1px solid var(--line,#ddd);border-radius:18px}
+.dataset-heading,.dataset-controls,.dataset-pagination{
+  display:flex;gap:16px;justify-content:space-between;align-items:end;flex-wrap:wrap}
+.dataset-heading h2{margin:8px 0}
+.dataset-controls{margin:20px 0}
+.dataset-controls label{flex:1;min-width:170px}
+.dataset-controls input,.dataset-controls select{width:100%;margin-top:7px}
+.dataset-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:16px}
+.dataset-card{min-width:0;overflow:hidden;border:1px solid var(--line,#ddd);border-radius:13px}
+.dataset-card img{width:100%;height:180px;object-fit:contain;background:#f1f0ec;display:block}
+.dataset-card-body{padding:12px}
+.dataset-card h3{font-size:14px;line-height:1.4;margin:0 0 8px}
+.dataset-card p{font-size:12px;overflow-wrap:anywhere}
+.dataset-card a{font-size:12px}
+.dataset-pagination{justify-content:center;margin-top:20px}
+.dataset-disclaimer{font-size:12px;opacity:.75;margin-top:16px}
+@media(max-width:600px){.dataset-panel{padding:15px}.dataset-heading{align-items:start}}
+</style>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const state = { split: "train", offset: 0, limit: 24, total: 0, items: [] };
+
+  const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"
+  })[c]);
+
+  async function load() {
+    const split = $("datasetSplit").value;
+    const search = $("datasetSearch").value.trim().toLowerCase();
+    state.split = split;
+    $("datasetSummary").textContent = "Loading verified dataset records...";
+    $("datasetCards").innerHTML = "";
+
+    try {
+      const response = await fetch(
+        `/api/dataset?split=${encodeURIComponent(split)}&limit=100&offset=0`
+      );
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Dataset API request failed");
+
+      state.total = data.total;
+      state.items = data.items || [];
+      const filtered = state.items.filter(item =>
+        `${item.title} ${item.label} ${item.object_id}`.toLowerCase().includes(search)
+      );
+
+      const start = state.offset;
+      const visible = filtered.slice(start, start + state.limit);
+
+      $("datasetSummary").textContent =
+        `${data.source} · ${data.split} split · ${data.total} available records` +
+        (search ? ` · ${filtered.length} matches in the loaded page of records` : "");
+
+      $("datasetCards").innerHTML = visible.map(item => `
+        <article class="dataset-card">
+          <a href="${esc(item.object_url)}" target="_blank" rel="noopener noreferrer">
+            <img src="${esc(item.image_url)}" loading="lazy"
+              alt="${esc(item.title || item.label || "Museum object image")}">
+          </a>
+          <div class="dataset-card-body">
+            <h3>${esc(item.title || "Untitled object")}</h3>
+            <p><strong>Label:</strong> ${esc(item.label || "Not provided")}</p>
+            <p><strong>Object ID:</strong> ${esc(item.object_id || "Not provided")}</p>
+            <a href="${esc(item.object_url)}" target="_blank" rel="noopener noreferrer">
+              View source record ↗
+            </a>
+          </div>
+        </article>`).join("") ||
+        "<p>No matching records on this page. Try another search or page.</p>";
+
+      $("datasetPage").textContent = `Loaded ${start + 1}–${Math.min(start + state.limit, filtered.length)} of ${filtered.length} matches`;
+      $("datasetPrevious").disabled = start === 0;
+      $("datasetNext").disabled = start + state.limit >= filtered.length;
+    } catch (error) {
+      $("datasetSummary").textContent = `Dataset unavailable: ${error.message}`;
+      $("datasetCards").innerHTML = "";
+    }
+  }
+
+  $("datasetLoad").addEventListener("click", () => { state.offset = 0; load(); });
+  $("datasetSplit").addEventListener("change", () => { state.offset = 0; load(); });
+  $("datasetSearch").addEventListener("input", () => { state.offset = 0; load(); });
+  $("datasetPrevious").addEventListener("click", () => {
+    state.offset = Math.max(0, state.offset - state.limit); load();
+  });
+  $("datasetNext").addEventListener("click", () => {
+    state.offset += state.limit; load();
+  });
+  load();
+})();
+</script>
+
+</main>
+</div>
+
+<dialog id="registerDialog" class="register-dialog">
+  <form id="registerForm">
+    <div class="dialog-heading"><div><span class="eyebrow">DIGITAL ARCHIVE</span><h2>Register an artifact</h2></div><button type="button" class="icon-button" id="closeDialog">✕</button></div>
+    <label for="artifactName">Artifact name *</label><input id="artifactName" name="name" required maxlength="180" placeholder="e.g. Carved stone sculpture">
+    <label for="artifactCategory">Category</label><input id="artifactCategory" name="category" placeholder="e.g. Sculpture">
+    <label for="artifactDescription">Description</label><textarea id="artifactDescription" name="description" rows="3" placeholder="Material, period, provenance, condition…"></textarea>
+    <p class="form-note">This form submits to the existing backend. Additional fields will depend on the API schema.</p>
+    <div id="registerMessage" class="inline-message" aria-live="polite"></div>
+    <div class="dialog-actions"><button type="button" class="btn btn-outline" id="cancelDialog">Cancel</button><button class="btn btn-gold" type="submit">Save artifact</button></div>
+  </form>
+</dialog>
+</body>
+</html>

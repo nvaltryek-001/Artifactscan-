@@ -1,0 +1,484 @@
+from __future__ import annotations
+
+import csv
+import io
+import os
+import shutil
+import sqlite3
+import subprocess
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
+from PIL import Image, UnidentifiedImageError
+
+ROOT = Path(__file__).resolve().parent.parent
+FRONTEND = ROOT / "frontend"
+STORAGE = ROOT / "storage"
+UPLOADS = STORAGE / "uploads"
+RECON = STORAGE / "reconstructions"
+DB = STORAGE / "artifacts.db"
+
+for folder in (UPLOADS, RECON):
+    folder.mkdir(parents=True, exist_ok=True)
+
+app = FastAPI(title="ArtifactScan AI", version="0.1.0")
+db_lock = threading.Lock()
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def connect():
+    con = sqlite3.connect(DB, timeout=15)
+    con.row_factory = sqlite3.Row
+    return con
+
+
+def init_db():
+    with connect() as con:
+        con.executescript("""
+        CREATE TABLE IF NOT EXISTS artifacts (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            category TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            provenance TEXT DEFAULT '',
+            rights TEXT DEFAULT '',
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS assets (
+            id TEXT PRIMARY KEY,
+            artifact_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            path TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(artifact_id) REFERENCES artifacts(id)
+        );
+        CREATE TABLE IF NOT EXISTS jobs (
+            id TEXT PRIMARY KEY,
+            artifact_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            message TEXT DEFAULT '',
+            output_dir TEXT DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY(artifact_id) REFERENCES artifacts(id)
+        );
+        """)
+
+
+init_db()
+
+
+class ArtifactInput(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    category: str = Field(min_length=1, max_length=100)
+    description: str = Field(default="", max_length=5000)
+    provenance: str = Field(default="", max_length=2000)
+    rights: str = Field(default="", max_length=1000)
+
+
+def artifact_dict(row):
+    return dict(row)
+
+
+def update_job(job_id, status, stage, message="", output_dir=""):
+    with connect() as con:
+        con.execute(
+            """UPDATE jobs SET status=?, stage=?, message=?,
+               output_dir=?, updated_at=? WHERE id=?""",
+            (status, stage, message[:3000], output_dir, now(), job_id),
+        )
+
+
+@app.get("/api/health")
+def health():
+    return {"status": "ok", "service": "ArtifactScan AI API"}
+
+
+@app.get("/api/readiness")
+def readiness():
+    docker = shutil.which("docker")
+    colmap_ready = False
+    if docker:
+        try:
+            check = subprocess.run(
+                [docker, "image", "inspect", "colmap/colmap:latest"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=15,
+                check=False,
+            )
+            colmap_ready = check.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
+            colmap_ready = False
+
+    return {
+        "api": True,
+        "database": DB.exists(),
+        "colmap": colmap_ready,
+        "colmap_runtime": "docker",
+        "classifier": False,
+        "classifier_note": "No trained model is configured yet.",
+    }
+
+
+@app.get("/api/artifacts")
+def list_artifacts():
+    with connect() as con:
+        rows = con.execute(
+            "SELECT * FROM artifacts ORDER BY created_at DESC"
+        ).fetchall()
+        results = []
+        for row in rows:
+            item = artifact_dict(row)
+            item["image_count"] = con.execute(
+                "SELECT COUNT(*) FROM assets WHERE artifact_id=?",
+                (item["id"],),
+            ).fetchone()[0]
+            results.append(item)
+    return results
+
+
+@app.post("/api/artifacts")
+def create_artifact(data: ArtifactInput):
+    artifact_id = str(uuid.uuid4())
+    with connect() as con:
+        con.execute(
+            """INSERT INTO artifacts
+               (id,title,category,description,provenance,rights,created_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                artifact_id, data.title.strip(), data.category.strip(),
+                data.description, data.provenance, data.rights, now()
+            ),
+        )
+    return {"id": artifact_id, "status": "created"}
+
+
+@app.get("/api/artifacts/{artifact_id}")
+def get_artifact(artifact_id: str):
+    with connect() as con:
+        row = con.execute(
+            "SELECT * FROM artifacts WHERE id=?", (artifact_id,)
+        ).fetchone()
+        if row is None:
+            raise HTTPException(404, "Artifact not found")
+        item = artifact_dict(row)
+        item["assets"] = [
+            dict(a) for a in con.execute(
+                """SELECT id,filename,media_type,checksum,created_at
+                   FROM assets WHERE artifact_id=?""",
+                (artifact_id,),
+            ).fetchall()
+        ]
+        item["jobs"] = [
+            dict(j) for j in con.execute(
+                """SELECT id,status,stage,message,created_at,updated_at
+                   FROM jobs WHERE artifact_id=? ORDER BY created_at DESC""",
+                (artifact_id,),
+            ).fetchall()
+        ]
+    return item
+
+
+@app.post("/api/artifacts/{artifact_id}/images")
+async def upload_images(
+    artifact_id: str,
+    files: list[UploadFile] = File(...),
+):
+    with connect() as con:
+        exists = con.execute(
+            "SELECT id FROM artifacts WHERE id=?", (artifact_id,)
+        ).fetchone()
+    if not exists:
+        raise HTTPException(404, "Artifact not found")
+    if not files or len(files) > 80:
+        raise HTTPException(400, "Upload between 1 and 80 images per request")
+
+    target = UPLOADS / artifact_id
+    target.mkdir(parents=True, exist_ok=True)
+    saved = []
+
+    for upload in files:
+        raw = await upload.read()
+        if len(raw) > 15 * 1024 * 1024:
+            raise HTTPException(413, "Each image must be at most 15 MB")
+        try:
+            image = Image.open(io.BytesIO(raw))
+            image.verify()
+        except (UnidentifiedImageError, OSError):
+            raise HTTPException(400, "An uploaded file is not a valid image")
+
+        # Reopen after verify and accept only standard image formats.
+        image = Image.open(io.BytesIO(raw))
+        fmt = (image.format or "").upper()
+        extensions = {"JPEG": ".jpg", "PNG": ".png", "WEBP": ".webp"}
+        if fmt not in extensions:
+            raise HTTPException(400, "Only JPEG, PNG and WEBP images are supported")
+
+        import hashlib
+        checksum = hashlib.sha256(raw).hexdigest()
+        asset_id = str(uuid.uuid4())
+        filename = asset_id + extensions[fmt]
+        path = target / filename
+        path.write_bytes(raw)
+
+        with connect() as con:
+            con.execute(
+                """INSERT INTO assets
+                   (id,artifact_id,filename,path,media_type,checksum,created_at)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    asset_id, artifact_id, filename, str(path),
+                    upload.content_type or "application/octet-stream",
+                    checksum, now()
+                ),
+            )
+        saved.append({"id": asset_id, "filename": filename, "sha256": checksum})
+
+    return {"uploaded": len(saved), "assets": saved}
+
+
+def run_colmap(job_id: str, artifact_id: str):
+    """Run COLMAP in Docker and store output in this project's reconstruction folder."""
+    docker = shutil.which("docker")
+    if not docker:
+        update_job(
+            job_id, "failed", "dependency_check",
+            "Docker CLI is not on the backend PATH. Restart the backend from a "
+            "terminal where the docker command works."
+        )
+        return
+
+    try:
+        image_check = subprocess.run(
+            [docker, "image", "inspect", "colmap/colmap:latest"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+        if image_check.returncode != 0:
+            update_job(
+                job_id, "failed", "dependency_check",
+                "COLMAP Docker image is missing. Pull colmap/colmap:latest first."
+            )
+            return
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        update_job(
+            job_id, "failed", "dependency_check",
+            f"Docker check failed: {type(exc).__name__}: {exc}"
+        )
+        return
+
+    with connect() as con:
+        images = con.execute(
+            "SELECT path FROM assets WHERE artifact_id=?",
+            (artifact_id,),
+        ).fetchall()
+
+    if len(images) < 3:
+        update_job(
+            job_id, "failed", "image_validation",
+            "At least 3 images are required; 20–50 sharp, overlapping views "
+            "are a better starting point for a real object."
+        )
+        return
+
+    job_dir = RECON / job_id
+    image_dir = job_dir / "images"
+    workspace = job_dir / "workspace"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    try:
+        for index, row in enumerate(images, start=1):
+            source_path = Path(row["path"])
+            # Unique names prevent collisions if uploads share a filename.
+            target_path = image_dir / f"{index:04d}_{source_path.name}"
+            shutil.copy2(source_path, target_path)
+
+        relative_job = job_dir.relative_to(ROOT).as_posix()
+        container_images = f"/workspace/{relative_job}/images"
+        container_workspace = f"/workspace/{relative_job}/workspace"
+        mount = f"type=bind,source={ROOT},target=/workspace"
+
+        update_job(
+            job_id, "running", "photogrammetry",
+            "Running COLMAP automatic reconstruction inside Docker."
+        )
+
+        command = [
+            docker, "run", "--rm",
+            "--mount", mount,
+            "colmap/colmap:latest",
+            "colmap", "automatic_reconstructor",
+            "--workspace_path", container_workspace,
+            "--image_path", container_images,
+            "--workspace_format", "COLMAP",
+            "--data_type", "individual",
+            "--quality", "medium",
+            "--mesher", "poisson",
+        ]
+
+        log_path = job_dir / "colmap.log"
+        with log_path.open("w", encoding="utf-8") as log:
+            result = subprocess.run(
+                command,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                timeout=7200,
+                check=False,
+                shell=False,
+            )
+
+        if result.returncode != 0:
+            tail = ""
+            try:
+                lines = log_path.read_text(
+                    encoding="utf-8", errors="replace"
+                ).splitlines()
+                tail = " Recent log: " + " | ".join(lines[-8:])[-1800:]
+            except OSError:
+                pass
+            update_job(
+                job_id, "failed", "photogrammetry",
+                f"Docker/COLMAP exited with code {result.returncode}."
+                f"{tail}"
+            )
+            return
+
+        output_files = [
+            str(path.relative_to(job_dir))
+            for path in workspace.rglob("*")
+            if path.is_file()
+        ]
+
+        if not output_files:
+            update_job(
+                job_id, "failed", "output_validation",
+                "COLMAP returned success but no workspace files were found. "
+                "Inspect colmap.log."
+            )
+            return
+
+        update_job(
+            job_id, "succeeded", "complete",
+            f"COLMAP finished and produced {len(output_files)} workspace files. "
+            "Inspect the model and mesh outputs to assess reconstruction quality.",
+            str(workspace),
+        )
+
+    except subprocess.TimeoutExpired:
+        update_job(
+            job_id, "failed", "timeout",
+            "Reconstruction exceeded the 2-hour safety timeout."
+        )
+    except Exception as exc:
+        update_job(
+            job_id, "failed", "internal_error",
+            f"Reconstruction failed: {type(exc).__name__}: {exc}"
+        )
+
+
+@app.post("/api/artifacts/{artifact_id}/reconstructions")
+def start_reconstruction(artifact_id: str, background_tasks: BackgroundTasks):
+    with connect() as con:
+        exists = con.execute(
+            "SELECT id FROM artifacts WHERE id=?", (artifact_id,)
+        ).fetchone()
+        count = con.execute(
+            "SELECT COUNT(*) FROM assets WHERE artifact_id=?",
+            (artifact_id,),
+        ).fetchone()[0]
+
+        if not exists:
+            raise HTTPException(404, "Artifact not found")
+        if count < 3:
+            raise HTTPException(
+                400, "Upload at least 3 valid photographs before reconstruction"
+            )
+
+        job_id = str(uuid.uuid4())
+        con.execute(
+            """INSERT INTO jobs
+               (id,artifact_id,status,stage,message,created_at,updated_at)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                job_id, artifact_id, "queued", "queued",
+                "Waiting for reconstruction worker.", now(), now()
+            ),
+        )
+
+    background_tasks.add_task(run_colmap, job_id, artifact_id)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str):
+    with connect() as con:
+        row = con.execute(
+            "SELECT * FROM jobs WHERE id=?", (job_id,)
+        ).fetchone()
+    if not row:
+        raise HTTPException(404, "Job not found")
+    return dict(row)
+
+
+@app.get("/api/artifacts/{artifact_id}/classification")
+def classification_status(artifact_id: str):
+    with connect() as con:
+        exists = con.execute(
+            "SELECT id FROM artifacts WHERE id=?", (artifact_id,)
+        ).fetchone()
+    if not exists:
+        raise HTTPException(404, "Artifact not found")
+    return {
+        "status": "unavailable",
+        "message": "No trained classifier is installed. No prediction was fabricated.",
+    }
+
+
+@app.get("/api/reports/artifacts.csv")
+def export_artifacts():
+    with connect() as con:
+        rows = con.execute(
+            "SELECT * FROM artifacts ORDER BY created_at DESC"
+        ).fetchall()
+    stream = io.StringIO()
+    fields = [
+        "id", "title", "category", "description",
+        "provenance", "rights", "created_at"
+    ]
+    writer = csv.DictWriter(stream, fieldnames=fields)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(dict(row))
+    stream.seek(0)
+    return StreamingResponse(
+        iter([stream.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=artifacts.csv"},
+    )
+
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    page = FRONTEND / "index.html"
+    if not page.exists():
+        raise HTTPException(500, "Frontend file is missing")
+    return page.read_text(encoding="utf-8")
+
+
+app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
