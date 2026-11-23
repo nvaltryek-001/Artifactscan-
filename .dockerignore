@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+storage
+data
+models
+logs
+samples
+dist
+docs/media
+**/__pycache__
+.pytest_cache

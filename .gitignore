@@ -1,17 +1,17 @@
+# Python
 .venv/
+venv/
 __pycache__/
-.pytest_cache/
-node_modules/
-.env
 *.py[cod]
-storage/*
-!storage/uploads/
-!storage/reconstructions/
-!storage/exports/
-dist/*
-!dist/.gitkeepvenv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets
+.env
 .env.*
 !.env.example
+
+# Runtime data (never commit uploads, databases or generated models)
 storage/
 backups/
 diagnostics/
@@ -19,4 +19,12 @@ diagnostics/
 *.sqlite
 *.sqlite3
 *.log
-*.pyc
+data/imet/
+models/classifier/*.pth
+logs/
+samples/
+
+# Build output
+dist/*
+!dist/.gitkeep
+node_modules/

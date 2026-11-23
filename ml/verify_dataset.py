@@ -2,7 +2,7 @@
 from pathlib import Path
 from PIL import Image
 
-root = Path("data/imet")
+root = Path(__file__).resolve().parents[1] / "data" / "imet"
 for split in ("train", "validation"):
     metadata = root / f"{split}_metadata.csv"
     folder = root / split
