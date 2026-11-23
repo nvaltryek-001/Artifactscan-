@@ -1,0 +1,14 @@
+services:
+  artifactscan:
+    build: .
+    image: artifactscan-ai:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      - artifactscan-data:/data
+    environment:
+      ARTIFACTSCAN_RECON_ENGINE: auto
+    restart: unless-stopped
+
+volumes:
+  artifactscan-data:

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check backend tests scripts/make_sample_images.py scripts/seed_demo.py
+      - name: Tests (including end-to-end reconstruction)
+        run: pytest -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Frontend syntax check
+        run: |
+          node --check frontend/static/app.js
+          node --check frontend/static/viewer.js
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t artifactscan-ai .
+      - name: Smoke test container
+        run: |
+          docker run -d -p 8000:8000 --name app artifactscan-ai
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8000/api/health && break; sleep 1; done
+          curl -fs http://127.0.0.1:8000/api/readiness
